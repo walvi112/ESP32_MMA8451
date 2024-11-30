@@ -2,6 +2,9 @@
 #include "driver/i2c_master.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "MMA8451.h"
 
 #define I2C_PORT        0
@@ -9,6 +12,52 @@
 #define I2C_SDA_PIN     16
 
 const char* TAG = "MMA8451";
+
+SemaphoreHandle_t i2c_mux = NULL;
+MMA8451 mma8451;
+
+void mma8451_task(void *arg)
+{
+    while(1)
+    {
+        if(xSemaphoreTake(i2c_mux, portMAX_DELAY))
+        {
+            MMA8451_read(&mma8451);
+            ESP_LOGI(TAG, "X = %.2f | Y = %.2f | Z = %.2f  m/s^2", mma8451._xg * SENSORS_GRAVITY_STANDARD, mma8451._yg * SENSORS_GRAVITY_STANDARD, mma8451._zg * SENSORS_GRAVITY_STANDARD);
+            switch(MMA8451_getOrientation(&mma8451))
+            {
+                case MMA8451_PL_PUF:
+                    ESP_LOGI(TAG, "Portrait Up Front");
+                    break;
+                case MMA8451_PL_PUB:
+                    ESP_LOGI(TAG, "Portrait Up Back");
+                    break;
+                case MMA8451_PL_PDF:
+                    ESP_LOGI(TAG, "Portrait Down Front");
+                    break;
+                case MMA8451_PL_PDB:
+                    ESP_LOGI(TAG, "Portrait Down Back");
+                    break;
+                case MMA8451_PL_LRF:
+                    ESP_LOGI(TAG, "Landscape Right Front");
+                    break;
+                case MMA8451_PL_LRB:
+                    ESP_LOGI(TAG, "Landscape Right Back");
+                    break;
+                case MMA8451_PL_LLF:
+                    ESP_LOGI(TAG, "Landscape Left Front");
+                    break;
+                case MMA8451_PL_LLB:
+                    ESP_LOGI(TAG, "Landscape Left Back");
+                    break;
+                default:
+                    break;
+            };
+            xSemaphoreGive(i2c_mux);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
 
 void app_main(void)
 {
@@ -32,7 +81,8 @@ void app_main(void)
     i2c_master_dev_handle_t dev_handle;
     ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
 
-    MMA8451 mma8451;
+    i2c_mux = xSemaphoreCreateMutex();
+    assert(i2c_mux);
 
     if(!MMA8451_Init(&mma8451, dev_handle, MMA8451_DEFAULT_ADDRESS))
     {
@@ -42,37 +92,5 @@ void app_main(void)
     MMA8451_setRange(&mma8451, MMA8451_RANGE_2_G);
     ESP_LOGI(TAG, "Range = %d", MMA8451_getRange(&mma8451));
 
-    while(1)
-    {
-        MMA8451_read(&mma8451);
-        ESP_LOGI(TAG, "X = %.2f | Y = %.2f | Z = %.2f  m/s^2", mma8451._xg * SENSORS_GRAVITY_STANDARD, mma8451._yg * SENSORS_GRAVITY_STANDARD, mma8451._zg * SENSORS_GRAVITY_STANDARD);
-        switch(MMA8451_getOrientation(&mma8451))
-        {
-            case MMA8451_PL_PUF:
-                ESP_LOGI(TAG, "Portrait Up Front");
-                break;
-            case MMA8451_PL_PUB:
-                ESP_LOGI(TAG, "Portrait Up Back");
-                break;
-            case MMA8451_PL_PDF:
-                ESP_LOGI(TAG, "Portrait Down Front");
-                break;
-            case MMA8451_PL_PDB:
-                ESP_LOGI(TAG, "Portrait Down Back");
-                break;
-            case MMA8451_PL_LRF:
-                ESP_LOGI(TAG, "Landscape Right Front");
-                break;
-            case MMA8451_PL_LRB:
-                ESP_LOGI(TAG, "Landscape Right Back");
-                break;
-            case MMA8451_PL_LLF:
-                ESP_LOGI(TAG, "Landscape Left Front");
-                break;
-            case MMA8451_PL_LLB:
-                ESP_LOGI(TAG, "Landscape Left Back");
-                break;
-        };
-    }
-
+    xTaskCreatePinnedToCore(&mma8451_task, "MMA8451_Task", 2048, NULL, 1, NULL, 0);
 }
