@@ -58,7 +58,7 @@ esp_err_t MMA8451_setRange(MMA8451 *sensor, mma8451_range_t range)
 mma8451_range_t MMA8451_getRange(MMA8451 *sensor)
 {
 	mma8451_range_t range = 0;
-	readReg8(sensor, MMA8451_REG_XYZ_DATA_CFG, &range);
+	readReg8(sensor, MMA8451_REG_XYZ_DATA_CFG, (uint8_t*) &range);
 	return (range & 0x03);
 }
 
@@ -115,7 +115,7 @@ void MMA8451_setDataRate(MMA8451 *sensor, mma8451_dataRate_t dataRate)
 mma8451_dataRate_t MMA8451_getDataRate(MMA8451 *sensor)
 {
 	mma8451_dataRate_t dataRate;
-	readReg8(sensor, MMA8451_REG_CTRL_REG1, &dataRate);
+	readReg8(sensor, MMA8451_REG_CTRL_REG1, (uint8_t*) &dataRate);
 	return ((dataRate >> 3) & MMA8451_DATARATE_MASK);
 }
 
